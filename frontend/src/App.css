@@ -50,3 +50,15 @@ main {
 .read-the-docs {
   color: #888;
 }
+.btn {
+  padding: 10px 14px;
+  background-color: #2563eb;
+  color: white;
+  text-decoration: none;
+  border-radius: 6px;
+  font-weight: 500;
+}
+
+.btn:hover {
+  background-color: #1d4ed8;
+}

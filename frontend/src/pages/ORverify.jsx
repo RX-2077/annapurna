@@ -1,23 +1,21 @@
 import { useEffect, useRef, useState } from "react";
 import { Html5QrcodeScanner } from "html5-qrcode";
-import {
-  collection,
-  query,
-  where,
-  getDocs
-} from "firebase/firestore";
+import { collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "../firebase/firebaseConfig";
+import { Link, useNavigate } from "react-router-dom"; // 🔹 ADDED useNavigate
 
 export default function QRverify() {
   const hasScanned = useRef(false);
-
   const [verifiedData, setVerifiedData] = useState(null);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const navigate = useNavigate(); // 🔹 ADDED
 
   useEffect(() => {
     const scanner = new Html5QrcodeScanner(
       "reader",
-      { fps: 10, qrbox: 250 },
+      { fps: 10, qrbox: 280 },
       false
     );
 
@@ -25,55 +23,53 @@ export default function QRverify() {
       async (decodedText) => {
         if (hasScanned.current) return;
         hasScanned.current = true;
+        setLoading(true);
 
         try {
           await scanner.clear();
-
           const rationNumber = decodedText.trim();
-          console.log("SCANNED QR:", rationNumber);
 
-          // 1️⃣ USER QUERY (TYPO FIELD USED)
+          // USER QUERY
           const userQuery = query(
             collection(db, "users"),
             where("rationCardNumber", "==", rationNumber)
           );
-
           const userSnap = await getDocs(userQuery);
 
           if (userSnap.empty) {
-            setError("User not found");
+            setError("Ration Card not found in our database.");
+            setLoading(false);
             return;
           }
 
           const user = userSnap.docs[0].data();
 
-          // 2️⃣ QUOTA QUERY
+          // QUOTA QUERY
           const quotaQuery = query(
             collection(db, "quotas"),
             where("rationCardNumber", "==", rationNumber)
           );
-
           const quotaSnap = await getDocs(quotaQuery);
 
           if (quotaSnap.empty) {
-            setError("Quota not found");
+            setError("Allocation data missing for this card.");
+            setLoading(false);
             return;
           }
 
           const quota = quotaSnap.docs[0].data();
 
-          // ✅ VERIFIED DATA
           setVerifiedData({
             name: user.name,
-            phone: user.pone,
+            phone: user.phone || user.pone,
             rationCardNumber: rationNumber,
             grainKg: quota.allocatedGrainKg,
             oilKg: quota.allocatedOilKg
           });
-
         } catch (err) {
-          console.error(err);
-          setError("Something went wrong");
+          setError("Failed to process QR. Please try again.");
+        } finally {
+          setLoading(false);
         }
       },
       () => {}
@@ -85,112 +81,97 @@ export default function QRverify() {
   }, []);
 
   return (
-  <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-500 p-6">
-    <div className="w-full max-w-5xl bg-white rounded-3xl shadow-2xl overflow-hidden">
+    <div className="min-h-screen bg-[#f8fafc] p-4 md:p-10 font-sans text-slate-800">
+      <div className="max-w-4xl mx-auto">
 
-      {/* Header with gradient */}
-      <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-12 text-center">
-        <div className="text-8xl mb-4">🎫</div>
-        <h2 className="text-5xl font-bold text-white mb-3">
-          Ration Card Verification
-        </h2>
-        <p className="text-blue-100 text-lg">Scan QR code to verify eligibility</p>
-      </div>
+        {/* Header */}
+        <header className="mb-8">
+          <Link to="/" className="inline-flex items-center gap-2 text-slate-500 hover:text-emerald-600 transition-colors mb-6 font-semibold">
+            ← Back to Dashboard
+          </Link>
 
-      <div className="p-12">
+          <h2 className="text-4xl font-black text-slate-900">
+            QR <span className="text-emerald-600">Verification</span>
+          </h2>
+          <p className="text-slate-500 font-medium">
+            Authenticate user eligibility via secure QR scan.
+          </p>
+        </header>
+
         {/* Scanner */}
-        {!verifiedData && (
-          <>
-            <div className="relative">
-              <div
-                id="reader"
-                className="w-full bg-gradient-to-br from-gray-50 to-gray-100 p-6 rounded-2xl border-4 border-dashed border-purple-300 shadow-inner"
-              ></div>
+        {!verifiedData && !error && (
+          <div className="bg-white rounded-3xl shadow-sm border p-8 text-center">
+            <div id="reader" className="w-full max-w-sm mx-auto border-4 border-emerald-500 rounded-xl"></div>
+            <p className="mt-6 font-semibold text-slate-500">Waiting for QR code...</p>
+          </div>
+        )}
 
-              <div className="absolute -top-4 -right-4 bg-yellow-400 text-yellow-900 px-6 py-3 rounded-full text-base font-bold shadow-lg animate-pulse">
-                Ready to Scan
-              </div>
-            </div>
-
-            <div className="mt-8 bg-gradient-to-r from-blue-50 to-purple-50 p-6 rounded-xl border border-purple-200">
-              <p className="text-center text-gray-700 text-lg font-medium flex items-center justify-center gap-3">
-                <span className="text-4xl">📷</span>
-                Align the QR code inside the camera view
-              </p>
-            </div>
-          </>
+        {/* Loading */}
+        {loading && (
+          <div className="bg-white rounded-3xl p-20 text-center shadow-sm">
+            <div className="animate-spin w-12 h-12 border-4 border-emerald-600 border-t-transparent rounded-full mx-auto mb-4"></div>
+            <p className="font-bold">Fetching records...</p>
+          </div>
         )}
 
         {/* Error */}
         {error && (
-          <div className="mt-8 bg-gradient-to-r from-red-500 to-pink-500 text-white px-8 py-6 rounded-2xl text-center font-bold shadow-lg transform hover:scale-105 transition-transform">
-            <div className="text-5xl mb-3">❌</div>
-            <div className="text-2xl">{error}</div>
+          <div className="bg-white rounded-3xl p-10 text-center border border-red-200">
+            <h3 className="text-xl font-bold text-red-600 mb-4">Verification Failed</h3>
+            <p className="mb-6">{error}</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="px-6 py-3 bg-black text-white rounded-xl"
+            >
+              Try Again
+            </button>
           </div>
         )}
 
-        {/* Verified Data */}
+        {/* VERIFIED RESULT */}
         {verifiedData && (
-          <div className="mt-6 space-y-6">
-            <div className="bg-gradient-to-r from-green-400 to-emerald-500 rounded-2xl p-6 text-center shadow-xl transform hover:scale-105 transition-transform">
-              <div className="text-5xl mb-3">✅</div>
-              <h3 className="text-2xl font-bold text-white mb-1">Verification Successful!</h3>
-              <p className="text-green-50 text-sm">Ration card details retrieved</p>
+          <div className="bg-white rounded-3xl shadow-xl overflow-hidden">
+
+            <div className="bg-emerald-600 text-white text-center p-6">
+              <h3 className="text-2xl font-black">IDENTITY VERIFIED</h3>
+              <p className="text-emerald-100">Member details retrieved</p>
             </div>
 
-            {/* User Info Card */}
-            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-6 border-2 border-blue-200 shadow-lg">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="bg-blue-500 text-white w-12 h-12 rounded-full flex items-center justify-center text-2xl">
-                  👤
-                </div>
-                <h4 className="text-xl font-bold text-gray-800">Personal Details</h4>
+            <div className="p-8 grid md:grid-cols-2 gap-6">
+              <div>
+                <p><strong>Name:</strong> {verifiedData.name}</p>
+                <p><strong>Phone:</strong> {verifiedData.phone}</p>
+                <p><strong>Card:</strong> {verifiedData.rationCardNumber}</p>
               </div>
 
-              <div className="space-y-3">
-                <div className="flex justify-between items-center bg-white p-3 rounded-xl">
-                  <span className="font-semibold text-gray-600">Name</span>
-                  <span className="text-gray-900 font-medium">{verifiedData.name}</span>
-                </div>
-
-                <div className="flex justify-between items-center bg-white p-3 rounded-xl">
-                  <span className="font-semibold text-gray-600">Phone</span>
-                  <span className="text-gray-900 font-medium">{verifiedData.phone}</span>
-                </div>
-
-                <div className="flex justify-between items-center bg-white p-3 rounded-xl">
-                  <span className="font-semibold text-gray-600">Ration Card</span>
-                  <span className="text-blue-600 font-bold">{verifiedData.rationCardNumber}</span>
-                </div>
+              <div>
+                <p><strong>Grains:</strong> {verifiedData.grainKg} kg</p>
+                <p><strong>Oil:</strong> {verifiedData.oilKg} kg</p>
               </div>
             </div>
 
-            {/* Quota Card */}
-            <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-2xl p-6 border-2 border-amber-200 shadow-lg">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="bg-orange-500 text-white w-12 h-12 rounded-full flex items-center justify-center text-2xl">
-                  📦
-                </div>
-                <h4 className="text-xl font-bold text-gray-800">Allocated Quota</h4>
-              </div>
+            <div className="p-6 flex flex-col gap-4">
+              <button
+                onClick={() => window.location.reload()}
+                className="w-full py-3 border rounded-xl font-bold"
+              >
+                New Scan
+              </button>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-white p-4 rounded-xl text-center border-2 border-green-300 shadow-md">
-                  <div className="text-3xl mb-2">🌾</div>
-                  <div className="text-gray-600 text-sm font-medium mb-1">Grain</div>
-                  <div className="text-2xl font-bold text-green-600">{verifiedData.grainKg} <span className="text-lg">Kg</span></div>
-                </div>
-
-                <div className="bg-white p-4 rounded-xl text-center border-2 border-yellow-300 shadow-md">
-                  <div className="text-3xl mb-2">🛢️</div>
-                  <div className="text-gray-600 text-sm font-medium mb-1">Oil</div>
-                  <div className="text-2xl font-bold text-yellow-600">{verifiedData.oilKg} <span className="text-lg">Kg</span></div>
-                </div>
-              </div>
+              {/* 🔹 ONLY NEW BUTTON ADDED */}
+              <button
+                onClick={() =>
+                  navigate(`/ai-scale/${verifiedData.rationCardNumber}`)
+                }
+                className="w-full py-4 bg-emerald-600 text-white rounded-xl font-black text-lg hover:bg-emerald-700 transition-all"
+              >
+                ⚖️ Proceed to AI Weighing
+              </button>
             </div>
           </div>
         )}
+
       </div>
     </div>
-  </div>
-);}
+  );
+}
